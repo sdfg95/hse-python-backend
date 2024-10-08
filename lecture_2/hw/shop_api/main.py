@@ -1,11 +1,11 @@
 from typing import List, Optional
 from fastapi import FastAPI, HTTPException, status, Response
-from lecture_2.hw.shop_api.models import Cart, Item, CartItem
-from lecture_2.hw.shop_api.shemas import ItemCreate, ItemUpdate, CartCreate
-from lecture_2.hw.shop_api.data_bank import items_db, carts_db, item_counter, cart_counter
-
+from .models import Cart, Item, CartItem
+from .shemas import ItemCreate, ItemUpdate, CartCreate
+from .data_bank import items_db, carts_db, item_counter, cart_counter
+from prometheus_fastapi_instrumentator import Instrumentator
 app = FastAPI(title="Shop API")
-
+Instrumentator().instrument(app).expose(app)
 
 # Cart
 @app.post("/cart", response_model=dict, status_code=status.HTTP_201_CREATED)
