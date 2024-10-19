@@ -1,6 +1,6 @@
 import http from 'k6/http';
 
-const baseUrl = 'http://localhost:8000';
+const baseUrl = 'http://localhost:8080';
 
 export const options = {
   scenarios: {
@@ -8,7 +8,7 @@ export const options = {
       executor: 'ramping-arrival-rate',
       startRate: 0,
       stages: [
-        { target: 60000, duration: '10m' },
+        { target: 12000, duration: '20m' },
       ],
       preAllocatedVUs: 100,
       maxVUs: 200,
@@ -18,5 +18,5 @@ export const options = {
 
 
 export default function() {
-  http.get(`${baseUrl}/`)
+  http.get(`${baseUrl}/cart`)
 }
