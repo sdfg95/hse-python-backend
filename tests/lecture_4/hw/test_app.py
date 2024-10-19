@@ -9,15 +9,12 @@ from pydantic import SecretStr
 
 from lecture_4.demo_service.api.main import create_app
 from lecture_4.demo_service.core.users import (
-    UserEntity,
     UserInfo,
     UserRole,
-    UserService,
-    password_is_longer_than_8,
+    UserService
 )
 
 from lecture_4.demo_service.api.contracts import (
-    UserAuthRequest,
     UserResponse,
     RegisterUserRequest,
 )
@@ -50,15 +47,7 @@ def user_info():
 
 
 @pytest.fixture
-def user_entity(info: UserInfo):
-    return UserEntity(
-        uid=1,
-        inf0=info
-    )
-
-
-@pytest.fixture
-def register_user_request():
+def user_request():
     return RegisterUserRequest(
         username=TEST_DATA_DICT["username"],
         name=TEST_DATA_DICT["name"],
@@ -68,10 +57,10 @@ def register_user_request():
 
 
 @pytest.fixture()
-def register_user_request_json(register_user_request: RegisterUserRequest):
-    request_data = register_user_request.model_dump()
-    request_data["birthdate"] = register_user_request.birthdate.isoformat()
-    request_data["password"] = register_user_request.password.get_secret_value()
+def user_request_json(user_request: RegisterUserRequest):
+    request_data = user_request.model_dump()
+    request_data["birthdate"] = user_request.birthdate.isoformat()
+    request_data["password"] = user_request.password.get_secret_value()
     return request_data
 
 
@@ -86,30 +75,16 @@ def user_response():
     )
 
 
-@pytest.fixture()
-def user_authorisation_request():
-    return UserAuthRequest(
-        username=TEST_DATA_DICT["username"],
-        password=SecretStr(TEST_DATA_DICT["password"])
-    )
-
-
 @pytest.fixture
 def user_service():
-    return UserService
-
-
-@pytest.fixture
-def client():
-    app = create_app()
-    return TestClient(app)
+    return UserService()
 
 
 @pytest.fixture()
 def app_instance():
     application = create_app()
-    with TestClient(application) as client_instance:
-        yield client_instance
+    with TestClient(application) as client:
+        yield client
 
 
 @pytest.fixture()
@@ -126,9 +101,14 @@ def admin_headers():
     }
 
 
-def test_register_user(app_instance: TestClient, register_user_request_json: dict):
+def test_user_service_grant_admin(user_service: UserService, user_info: UserInfo):
+    with pytest.raises(ValueError):
+        user_service.grant_admin(5)
+
+
+def test_register_user(app_instance: TestClient, user_request_json: dict):
     response = app_instance.post(
-        "/user-register", json=register_user_request_json
+        "/user-register", json=user_request_json
     )
     data = response.json()
     assert response.status_code == HTTPStatus.OK
@@ -136,20 +116,31 @@ def test_register_user(app_instance: TestClient, register_user_request_json: dic
         assert data[key] == TEST_DATA_DICT[key]
 
 
-def test_second_registration(app_instance: TestClient, register_user_request_json: dict):
+def test_second_registration(app_instance: TestClient, user_request_json: dict):
     _ = app_instance.post(
-        "/user-register", json=register_user_request_json
+        "/user-register", json=user_request_json
     )
     response = app_instance.post(
-        "/user-register", json=register_user_request_json
+        "/user-register", json=user_request_json
     )
     assert response.status_code == HTTPStatus.BAD_REQUEST
 
 
-def test_get_user_by_id(app_instance: TestClient, register_user_request_json: dict, auth_headers: dict,
+def test_register_user_short_password(
+        app_instance: TestClient,
+        user_request_json: dict,
+):
+    user_request_json["password"] = "megatrone"
+    response = app_instance.post(
+        "/user-register", json=user_request_json
+    )
+    assert response.status_code == 400
+
+
+def test_get_user_by_id(app_instance: TestClient, user_request_json: dict, auth_headers: dict,
                         user_response: UserResponse):
     register_resp = app_instance.post(
-        "/user-register", json=register_user_request_json
+        "/user-register", json=user_request_json
     )
 
     assert register_resp.status_code == HTTPStatus.OK
@@ -168,10 +159,10 @@ def test_get_user_by_id(app_instance: TestClient, register_user_request_json: di
     assert datetime.fromisoformat(response.json().get("birthdate")) == user_response.birthdate
 
 
-def test_get_user_by_username(app_instance: TestClient, register_user_request_json: dict, auth_headers: dict,
+def test_get_user_by_username(app_instance: TestClient, user_request_json: dict, auth_headers: dict,
                               user_response: UserResponse):
     register_resp = app_instance.post(
-        "/user-register", json=register_user_request_json
+        "/user-register", json=user_request_json
     )
 
     assert register_resp.status_code == HTTPStatus.OK
@@ -190,9 +181,9 @@ def test_get_user_by_username(app_instance: TestClient, register_user_request_js
     assert datetime.fromisoformat(response.json().get("birthdate")) == user_response.birthdate
 
 
-def test_get_user_by_both_params(app_instance: TestClient, register_user_request_json: dict, auth_headers: dict):
+def test_get_user_by_both_params(app_instance: TestClient, user_request_json: dict, auth_headers: dict):
     register_resp = app_instance.post(
-        "/user-register", json=register_user_request_json
+        "/user-register", json=user_request_json
     )
 
     assert register_resp.status_code == HTTPStatus.OK
@@ -208,10 +199,10 @@ def test_get_user_by_both_params(app_instance: TestClient, register_user_request
     assert response.status_code == HTTPStatus.BAD_REQUEST
 
 
-def test_get_user_by_both_params_one_incorrect(app_instance: TestClient, register_user_request_json: dict,
+def test_get_user_by_both_params_one_incorrect(app_instance: TestClient, user_request_json: dict,
                                                auth_headers: dict):
     register_resp = app_instance.post(
-        "/user-register", json=register_user_request_json
+        "/user-register", json=user_request_json
     )
 
     assert register_resp.status_code == HTTPStatus.OK
@@ -227,10 +218,10 @@ def test_get_user_by_both_params_one_incorrect(app_instance: TestClient, registe
     assert response.status_code == HTTPStatus.BAD_REQUEST
 
 
-def test_get_user_no_register(app_instance: TestClient, register_user_request_json: dict, auth_headers: dict):
+def test_get_user_no_register(app_instance: TestClient, user_request_json: dict, auth_headers: dict):
     response = app_instance.post(
         url='/user-get',
-        params={'username': register_user_request_json.get('username')},
+        params={'username': user_request_json.get('username')},
         headers=auth_headers
 
     )
@@ -238,9 +229,9 @@ def test_get_user_no_register(app_instance: TestClient, register_user_request_js
     assert response.status_code == HTTPStatus.UNAUTHORIZED
 
 
-def test_get_user_incorrect_params(app_instance: TestClient, register_user_request_json: dict, auth_headers: dict):
+def test_get_user_incorrect_params(app_instance: TestClient, user_request_json: dict, auth_headers: dict):
     register_resp = app_instance.post(
-        "/user-register", json=register_user_request_json
+        "/user-register", json=user_request_json
     )
 
     assert register_resp.status_code == HTTPStatus.OK
@@ -262,9 +253,9 @@ def test_get_user_incorrect_params(app_instance: TestClient, register_user_reque
     assert response.status_code == HTTPStatus.NOT_FOUND
 
 
-def test_get_user_no_params(app_instance: TestClient, register_user_request_json: dict, auth_headers: dict):
+def test_get_user_no_params(app_instance: TestClient, user_request_json: dict, auth_headers: dict):
     register_resp = app_instance.post(
-        "/user-register", json=register_user_request_json
+        "/user-register", json=user_request_json
     )
 
     assert register_resp.status_code == HTTPStatus.OK
@@ -277,9 +268,9 @@ def test_get_user_no_params(app_instance: TestClient, register_user_request_json
     assert response.status_code == HTTPStatus.BAD_REQUEST
 
 
-def test_get_user_no_header(app_instance: TestClient, register_user_request_json: dict, auth_headers: dict):
+def test_get_user_no_header(app_instance: TestClient, user_request_json: dict, auth_headers: dict):
     register_resp = app_instance.post(
-        "/user-register", json=register_user_request_json
+        "/user-register", json=user_request_json
     )
 
     assert register_resp.status_code == HTTPStatus.OK
@@ -291,9 +282,9 @@ def test_get_user_no_header(app_instance: TestClient, register_user_request_json
     assert response.status_code == HTTPStatus.UNAUTHORIZED
 
 
-def test_get_user_wrong_header(app_instance: TestClient, register_user_request_json: dict, auth_headers: dict):
+def test_get_user_wrong_header(app_instance: TestClient, user_request_json: dict, auth_headers: dict):
     register_resp = app_instance.post(
-        "/user-register", json=register_user_request_json
+        "/user-register", json=user_request_json
     )
     assert register_resp.status_code == HTTPStatus.OK
 
@@ -307,24 +298,24 @@ def test_get_user_wrong_header(app_instance: TestClient, register_user_request_j
     assert response.status_code == HTTPStatus.UNAUTHORIZED
 
 
-def test_promote_user(app_instance: TestClient, register_user_request_json: dict, auth_headers: dict):
+def test_promote_user(app_instance: TestClient, user_request_json: dict, auth_headers: dict):
     register_resp = app_instance.post(
-        "/user-register", json=register_user_request_json
+        "/user-register", json=user_request_json
     )
     assert register_resp.status_code == HTTPStatus.OK
 
     response = app_instance.post(
         url='/user-promote',
-        params={'id': register_user_request_json.get('uid')},
+        params={'id': user_request_json.get('uid')},
         headers=auth_headers
     )
 
     assert response.status_code == HTTPStatus.FORBIDDEN
 
 
-def test_promote_user_admin(app_instance: TestClient, register_user_request_json: dict, admin_headers: dict):
+def test_promote_user_admin(app_instance: TestClient, user_request_json: dict, admin_headers: dict):
     register_resp = app_instance.post(
-        "/user-register", json=register_user_request_json
+        "/user-register", json=user_request_json
     )
     assert register_resp.status_code == HTTPStatus.OK
 
